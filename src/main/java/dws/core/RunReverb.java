@@ -19,22 +19,16 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.Writer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 import LBJ2.nlp.Sentence;
-import LBJ2.nlp.Word;
-import LBJ2.parse.LinkedChild;
-import LBJ2.parse.LinkedVector;
 import dws.util.SpotLinkDao;
+import edu.washington.cs.knowitall.extractor.ReVerbExtractor;
+import edu.washington.cs.knowitall.nlp.ChunkedSentence;
 import edu.washington.cs.knowitall.nlp.OpenNlpSentenceChunker;
+import edu.washington.cs.knowitall.nlp.extraction.ChunkedBinaryExtraction;
 
 /**
  * loads a given text corpus
@@ -42,7 +36,7 @@ import edu.washington.cs.knowitall.nlp.OpenNlpSentenceChunker;
  * @author adutta
  *
  */
-public class LoadCorpora {
+public class RunReverb {
 
 	// location of TagMe Configuration file
 	private static final String CONFIG_FILE = "/var/work/tagme/tagme.acubelab/config.sample.en.xml";
@@ -60,13 +54,23 @@ public class LoadCorpora {
 	static Disambiguator disamb = null;
 	static Segmentation segmentation = null;
 	static RhoMeasure rho = null;
+	static OpenNlpSentenceChunker chunker;
+	static ReVerbExtractor reverb;
+
+	static ChunkedSentence sent;
 
 	/**
 	 * 
 	 */
-	public LoadCorpora() {
-		
-
+	public RunReverb() {
+		// Looks on the classpath for the default model files.
+		try {
+			chunker = new OpenNlpSentenceChunker();
+			reverb = new ReVerbExtractor();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -90,7 +94,7 @@ public class LoadCorpora {
 		try {
 			INPUT_TEXT_CORPUS = args[0];
 			TRIPLES_FILE = new File(INPUT_TEXT_CORPUS).getParent()
-					+ "/triples-" + args[1] + ".txt";
+					+ "/triples-" + args[1] + ".reverb.txt";
 
 			readTrainingTextFile(INPUT_TEXT_CORPUS);
 		} catch (IOException e) {
@@ -129,6 +133,7 @@ public class LoadCorpora {
 		Map<String, SpotLinkDao> annotatedSpots = null;
 		String sCurrentLine = null;
 		Sentence sentence = null;
+		String[] sntncs = null;
 
 		try {
 
@@ -139,7 +144,7 @@ public class LoadCorpora {
 			// go through the input corpora file line by line
 			while ((sCurrentLine = br.readLine()) != null) {
 				// split on one or more tab
-				String[] sntncs = sCurrentLine.split("\t+");
+				sntncs = sCurrentLine.split("\t+");
 				if (sntncs.length == 2) {
 					sentence = new Sentence(sntncs[1]);
 
@@ -147,16 +152,7 @@ public class LoadCorpora {
 					annotatedSpots = annotate(sentence.text);
 				}
 
-				// check the annotations
-				// debug point
-				// System.out.println("=========\n" + sentence.text);
-				// for (Entry<String, SpotLinkDao> spot : annotatedSpots
-				// .entrySet()) {
-				// System.out.println(spot.getKey() + " ==> "
-				// + spot.getValue());
-				// }
-
-				writeOutTriples(sentence, annotatedSpots, triplesWriter);
+				extract(sentence, annotatedSpots, triplesWriter);
 			}
 
 		} catch (IOException e) {
@@ -164,74 +160,6 @@ public class LoadCorpora {
 		} finally {
 			if (triplesWriter != null)
 				triplesWriter.close();
-		}
-	}
-
-	/**
-	 * write out the new facts
-	 * 
-	 * @param sentence
-	 * @param annotatedSpots
-	 * @param triplesWriter
-	 * @throws IOException
-	 */
-	private static void writeOutTriples(Sentence sentence,
-			Map<String, SpotLinkDao> annotatedSpots,
-			BufferedWriter triplesWriter) throws IOException {
-
-		StringBuilder build = null;
-		List<String> path = new ArrayList<String>();
-		List<String> matches = null;
-		String input = sentence.text;
-
-		Pattern pattern = null;
-		Matcher matcher = null;
-
-		// take the sentence and split into words
-		LinkedVector wordsInSentence = getWords(sentence);
-
-		boolean flag = false;
-		for (int idx = 0; idx < wordsInSentence.size(); idx++) {
-			LinkedChild word = wordsInSentence.get(idx);
-			if (annotatedSpots.containsKey(word.toString())) {
-				path.add(word.toString());
-			}
-		}
-
-		if (path.size() >= 2) {
-			int idx = 1;
-			while (idx < path.size()) {
-				try {
-					pattern = Pattern.compile("(?<=\\b" + path.get(idx - 1)
-							+ "\\b).*?(?=\\b" + path.get(idx) + "\\b)");
-					matcher = pattern.matcher(input);
-					matches = new ArrayList<String>();
-					while (matcher.find()) {
-						matches.add(matcher.group());
-					}
-
-					if (matches != null && matches.size() > 0) {
-						build = new StringBuilder();
-						for (String s : matches) {
-							build = build.append(s + " ");
-						}
-						// write only predicates with some content
-						if (build.toString().trim().length() > 0) {
-							triplesWriter.write("\n" + path.get(idx - 1)
-									+ ";\t");
-							triplesWriter.write(build.toString().trim() + ";\t"
-									+ path.get(idx));
-							triplesWriter.flush();
-						}
-					}
-
-				} catch (PatternSyntaxException e) {
-					// ignore the pattern
-				} finally {
-					// increment
-					idx = idx + 1;
-				}
-			}
 		}
 	}
 
@@ -271,13 +199,35 @@ public class LoadCorpora {
 		return mapSpots;
 	}
 
-	private static LinkedVector getWords(Sentence sentence) {
-		LinkedVector lVector = new LinkedVector();
-		String[] words = sentence.toString().split("\\s");
-		for (int wrdIdx = 0; wrdIdx < words.length; wrdIdx++) {
-			lVector.add(new Word(words[wrdIdx]));
-		}
-		return lVector;
-	}
+	/**
+	 * calls Reverb extraction routine
+	 * 
+	 * @param sentStr
+	 * @param annotatedSpots
+	 * @param triplesWriter
+	 * @throws IOException
+	 */
+	private static void extract(Sentence sentStr,
+			Map<String, SpotLinkDao> annotatedSpots,
+			BufferedWriter triplesWriter) throws IOException {
 
+		String arg1 = null;
+		String reltn = null;
+		String arg2 = null;
+
+		sent = chunker.chunkSentence(sentStr.text);
+
+		for (ChunkedBinaryExtraction extr : reverb.extract(sent)) {
+
+			arg1 = extr.getArgument1().toString();
+			reltn = extr.getRelation().toString();
+			arg2 = extr.getArgument2().toString();
+
+			if (annotatedSpots.containsKey(arg1)
+					&& annotatedSpots.containsKey(arg2)) {
+				triplesWriter.write(arg1 + "; " + reltn + "; " + arg2 + "\n");
+				triplesWriter.flush();
+			}
+		}
+	}
 }
