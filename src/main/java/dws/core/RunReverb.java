@@ -89,7 +89,7 @@ public class RunReverb {
 		}
 
 		System.out.println("Time to init = " + (System.nanoTime() - start)
-				/ FACTOR + " mints..");
+				/ FACTOR + " secds..");
 
 		try {
 			INPUT_TEXT_CORPUS = args[0];
@@ -217,16 +217,19 @@ public class RunReverb {
 
 		sent = chunker.chunkSentence(sentStr.text);
 
-		for (ChunkedBinaryExtraction extr : reverb.extract(sent)) {
+		if (sent != null) {
+			for (ChunkedBinaryExtraction extr : reverb.extract(sent)) {
 
-			arg1 = extr.getArgument1().toString();
-			reltn = extr.getRelation().toString();
-			arg2 = extr.getArgument2().toString();
+				arg1 = extr.getArgument1().toString();
+				reltn = extr.getRelation().toString();
+				arg2 = extr.getArgument2().toString();
 
-			if (annotatedSpots.containsKey(arg1)
-					&& annotatedSpots.containsKey(arg2)) {
-				triplesWriter.write(arg1 + "; " + reltn + "; " + arg2 + "\n");
-				triplesWriter.flush();
+				if (annotatedSpots.containsKey(arg1)
+						&& annotatedSpots.containsKey(arg2)) {
+					triplesWriter.write(arg1 + "; " + reltn + "; " + arg2
+							+ "\n");
+					triplesWriter.flush();
+				}
 			}
 		}
 	}
