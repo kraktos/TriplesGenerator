@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import LBJ2.nlp.Sentence;
 import LBJ2.nlp.Word;
@@ -161,12 +163,25 @@ public class LoadCorpora {
 		}
 	}
 
+	/**
+	 * write out the new facts
+	 * 
+	 * @param sentence
+	 * @param annotatedSpots
+	 * @param triplesWriter
+	 * @throws IOException
+	 */
 	private static void writeOutTriples(Sentence sentence,
 			Map<String, SpotLinkDao> annotatedSpots,
 			BufferedWriter triplesWriter) throws IOException {
 
+		StringBuilder build = null;
 		List<String> path = new ArrayList<String>();
 		List<String> matches = null;
+		String input = sentence.text;
+
+		Pattern pattern = null;
+		Matcher matcher = null;
 
 		// take the sentence and split into words
 		LinkedVector wordsInSentence = getWords(sentence);
@@ -179,25 +194,38 @@ public class LoadCorpora {
 			}
 		}
 
-		if (path.size() == 2) {
-			String input = sentence.text;
-			Pattern p = Pattern.compile("(?<=\\b" + path.get(0)
-					+ "\\b).*?(?=\\b" + path.get(1) + "\\b)");
-			Matcher m = p.matcher(input);
-			matches = new ArrayList<String>();
-			while (m.find()) {
-				matches.add(m.group());
+		if (path.size() >= 2) {
+			int idx = 1;
+			while (idx < path.size()) {
+				try {
+					pattern = Pattern.compile("(?<=\\b" + path.get(idx - 1)
+							+ "\\b).*?(?=\\b" + path.get(idx) + "\\b)");
+					matcher = pattern.matcher(input);
+					matches = new ArrayList<String>();
+					while (matcher.find()) {
+						matches.add(matcher.group());
+					}
+
+					if (matches != null && matches.size() > 0) {
+						triplesWriter.write("\n" + path.get(idx - 1) + ";\t");
+						build = new StringBuilder();
+						for (String s : matches) {
+							build = build.append(s + " ");
+						}
+						triplesWriter.write(build.toString().trim() + ";\t"
+								+ path.get(idx));
+						triplesWriter.flush();
+					}
+
+				} catch (PatternSyntaxException e) {
+					// ignore the pattern
+				} finally {
+					// increment
+					idx = idx + 1;
+				}
 			}
 		}
 
-		if (matches != null && matches.size() > 0) {
-			triplesWriter.write("\n" + path.get(0) + "\t<");
-			for (String s : matches) {
-				triplesWriter.write(s + " ");
-			}
-			triplesWriter.write(">\t" + path.get(1));
-			triplesWriter.flush();
-		}
 	}
 
 	/**
