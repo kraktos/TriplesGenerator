@@ -63,14 +63,7 @@ public class RunReverb {
 	 * 
 	 */
 	public RunReverb() {
-		// Looks on the classpath for the default model files.
-		try {
-			chunker = new OpenNlpSentenceChunker();
-			reverb = new ReVerbExtractor();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+
 	}
 
 	/**
@@ -115,6 +108,9 @@ public class RunReverb {
 		disamb = new Disambiguator(LANG);
 		segmentation = new Segmentation();
 		rho = new RhoMeasure();
+
+		chunker = new OpenNlpSentenceChunker();
+		reverb = new ReVerbExtractor();
 
 	}
 
